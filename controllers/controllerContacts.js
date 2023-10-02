@@ -1,4 +1,4 @@
-const contactModel = require('./models/schemaContacts');
+const contactModel = require('../models/contacts');
 
 
 

@@ -1,6 +1,9 @@
 const express = require('express')
-const { listContacts, getContactById, addContact, removeContact, updateContact, updateStatusContact } = require('../../db/controller')
+const { listContacts, getContactById, addContact, removeContact, updateContact, updateStatusContact } = require('../../controllers/controllerContacts')
 const { contactSchemaPost, contactSchemaPut, contactSchemaPatch } = require('../../validate/validateContacts')
+const createError = require('../../utils/createError')
+const ERROR_TYPE = require('../../utils/errorsTypes')
+const auth = require('../../middlewares/auth')
 
 const router = express.Router()
 
@@ -47,8 +50,9 @@ router.get('/:contactId', async (req, res, next) => {
 
 
 // ======ADD_CONTACT=======
-router.post('/', async (req, res, next) => {
+router.post('/', [auth], async (req, res, next) => {
   try {
+    
     const { error } = contactSchemaPost.validate(req.body);
     if (error) {
       res.status(400).json({result:{
@@ -147,7 +151,7 @@ router.patch('/:contactId/favorite', async (req,res,next)=>{
 })
 
 
-contactSchemaPatch
+
 
 
 module.exports = router
