@@ -1,10 +1,9 @@
 const password = require('passport')
 const {Strategy, ExtractJwt} = require('passport-jwt')
 const { JWT_SECRET } = require('../evn')
-const userModel = require('../models/user')
 const createError = require('../utils/createError')
 const ERROR_TYPES = require('../utils/errorsTypes')
-
+const userService = require('../servise/user');
 
 
 const cookieExtractor = function(req){
@@ -23,7 +22,7 @@ const jwtStrategy = new Strategy({secretOrKey: JWT_SECRET, jwtFromRequest: Extra
 ])}, 
 async(payload, done)=>{
     try {
-        const user = await userModel.findOne(payload._id, {password:0})
+        const user = await userService.findById(payload.sub)
         
         if (user) {
             return done(null, user)
@@ -37,7 +36,6 @@ async(payload, done)=>{
         return done(error, null)
     }
 
-    console.log('userPRO', user)
 })
 
 
