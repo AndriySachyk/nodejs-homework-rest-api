@@ -4,11 +4,17 @@ const userModel = require('../models/user')
 const createError = require('../utils/createError')
 const { JWT_SECRET } = require('../evn');
 const ERROR_TYPES = require('../utils/errorsTypes');
+const gravatar = require('gravatar')
+const fs= require('node:fs/promises')
+const Jimp = require('jimp');
+const path = require('path')
 
+const AVATARS_DIR = path.join(__dirname, '../', 'public', 'avatars')
 
 const register = async(req, res, next)=>{
     try {
         const {email} = req.body    
+
         const user = await userModel.findOne({email})
         if (user) {
             const err = createError(ERROR_TYPES.EMAIL_USE, {
@@ -17,8 +23,9 @@ const register = async(req, res, next)=>{
             throw err
         }
         const {body} = req
+        const avatarURL = gravatar.url(email)
         const passwordHash = await bcrypt.hash(body.password, 10)   
-        const newUser = await userModel.create({...body, password: passwordHash})
+        const newUser = await userModel.create({...body, password: passwordHash, avatarURL})
         return res.status(201).json({ result:{
             status: "success",
             code: 201,
@@ -103,6 +110,40 @@ const current = async(req,res)=>{
     
 }
 
+
+const updateAvatar = async(req,res,next)=> {
+
+    try {
+        const { _id } = req.user;
+        
+        
+        const { path: destination, originalname } = req.file;
+
+        Jimp.read(destination).then((avatar)=>{
+            return avatar.resize(250,250).write(resultUpload)
+        }).catch((err)=>{
+            console.log(err.message)
+        })  
+
+        const filename = `${_id}_${originalname}`
+        const resultUpload = path.join(AVATARS_DIR, filename)
+        await fs.rename(destination, resultUpload)
+        const avatarURL = path.join('avatars', filename)
+
+        await userModel.findByIdAndUpdate(_id,{avatarURL})
+        
+                res.status(200).json({result:{
+                    avatarURL
+                }})
+
+        } catch (error) {
+            next(error)
+        } 
+
+}
+
+
+
 module.exports = {
-    register,login,logout,current
+    register,login,logout,current,updateAvatar
 }
