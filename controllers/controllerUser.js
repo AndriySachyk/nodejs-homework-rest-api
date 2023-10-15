@@ -7,7 +7,11 @@ const ERROR_TYPES = require('../utils/errorsTypes');
 const gravatar = require('gravatar')
 const fs= require('node:fs/promises')
 const Jimp = require('jimp');
-const path = require('path')
+const path = require('path');
+const { nanoid } = require('nanoid');
+const {sendEmail} = require('../servise/nodemailer');
+const { mail } = require('../utils/templateMail');
+
 
 const AVATARS_DIR = path.join(__dirname, '../', 'public', 'avatars')
 
@@ -23,9 +27,17 @@ const register = async(req, res, next)=>{
             throw err
         }
         const {body} = req
-        const avatarURL = gravatar.url(email)
         const passwordHash = await bcrypt.hash(body.password, 10)   
-        const newUser = await userModel.create({...body, password: passwordHash, avatarURL})
+        
+        const avatarURL = gravatar.url(email)
+        
+        const verificationToken = nanoid()
+        
+        const newUser = await userModel.create({...body, password: passwordHash, avatarURL, verificationToken})
+        
+        
+        await sendEmail(()=>{mail(email, verificationToken)})
+
         return res.status(201).json({ result:{
             status: "success",
             code: 201,
@@ -34,17 +46,20 @@ const register = async(req, res, next)=>{
                 subscription: newUser.subscription
             }
         }})
-} catch (error) {
+
+    } catch (error) {
     next(error)
+    }
 }
-}
+
+
 
 
 
 const login = async(req, res, next) =>{
     try {
         const {email, password} = req.body
-
+        
         let user = await userModel.findOne({email})
         if (!user) {
             const err = createError(ERROR_TYPES.UNAUTHORIZED, {
@@ -52,8 +67,8 @@ const login = async(req, res, next) =>{
             })
             throw err
         }
-
-
+        
+        
         const hashedPassword = user.password;
         const isValid = await bcrypt.compare(password, hashedPassword)
         if (!isValid) {
@@ -75,7 +90,7 @@ const login = async(req, res, next) =>{
             code: 200,
             data: user
         }})
-            
+        
     } catch (error) {
         next(error)
     }
@@ -88,9 +103,9 @@ const logout = async(req,res,next)=>{
         const {user} = req
         res.clearCookie('jwt')
         await userModel.findByIdAndUpdate(user._id, {token:''})
-
+        
         res.status(204).json()
-            
+        
     } catch (error) {
         next(error)
     }
@@ -99,18 +114,18 @@ const logout = async(req,res,next)=>{
 
 const current = async(req,res)=>{
     const {email, subscription,} = req.user
-        res.status(200).json({result:{
-            status: 'success',
-            code:200,
+    res.status(200).json({result:{
+        status: 'success',
+        code:200,
             data: {
                 email: email,
                 subscription: subscription
             }
         }})
+        
+    }
     
-}
-
-
+    
 const updateAvatar = async(req,res,next)=> {
 
     try {
@@ -118,7 +133,7 @@ const updateAvatar = async(req,res,next)=> {
         
         
         const { path: destination, originalname } = req.file;
-
+        
         Jimp.read(destination).then((avatar)=>{
             return avatar.resize(250,250).write(resultUpload)
         }).catch((err)=>{
@@ -129,21 +144,88 @@ const updateAvatar = async(req,res,next)=> {
         const resultUpload = path.join(AVATARS_DIR, filename)
         await fs.rename(destination, resultUpload)
         const avatarURL = path.join('avatars', filename)
-
+        
         await userModel.findByIdAndUpdate(_id,{avatarURL})
         
-                res.status(200).json({result:{
-                    avatarURL
+        res.status(200).json({result:{
+            avatarURL
                 }})
 
         } catch (error) {
             next(error)
         } 
+        
+}
+    
+    
+const verifyEmail = async(req,res,next)=>{
+    const {verificationToken} = req.params
+    
+try {
+    const verifiedUser = await userModel.findOne({verificationToken});
+    if (!verifiedUser) {
+        const err = createError(ERROR_TYPES.NOT_FOUND,{
+            message:'Not Found'
+        })
+        throw err
+    }
+    await userModel.findByIdAndUpdate(verifiedUser._id, {verify: true, verificationToken:null})
+    res.status(200).json({result:{
+        message: 'Verification successful',
+    }})
+    
+} catch (error) {
+    next(error)
+}
 
 }
 
+    
+    
+const verifyResend = async(req,res,next)=>{
+    try {
+        const {email}= req.body
+        if (!email) {
+            const err = createError(ERROR_TYPES.BAD_REQUEST,{message:"missing required field email"})
+            throw err
+        }
+        const user = await userModel.findOne({email})
+        if (!user) {
+            const err = createError(ERROR_TYPES.NOT_FOUND,{
+                message:'Not Found'
+            })
+            throw err
+        }
+        if (user.verify) {
+            const err = createError(ERROR_TYPES.BAD_REQUEST,{message:"Verification has already been passed"})
+            throw err
+        }
+
+        const {verificationToken} = user
+
+        await sendEmail(()=>mail(email, verificationToken))
 
 
-module.exports = {
-    register,login,logout,current,updateAvatar
+
+
+        res.status(200).json({result:{
+            message: "Verification email sent"
+          }})
+    } catch (error) {
+        next(error)
+    }
+}
+    
+
+
+
+
+    module.exports = {
+        register,
+        login,
+        logout,
+        current,
+        updateAvatar,
+        verifyEmail,
+        verifyResend
 }
